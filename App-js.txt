@@ -15,6 +15,20 @@ import { LineChart } from "react-native-chart-kit";
 const screenWidth = Dimensions.get("window").width;
 const API = "http://192.168.4.1";
 
+// Paleta institucional VoltWalk, tomada del logotipo.
+const COLORS = {
+  forest: "#294A35",
+  forestLight: "#355B42",
+  forestDeep: "#203D2C",
+  lime: "#6FBE35",
+  yellow: "#FFD500",
+  sage: "#A9C9A0",
+  offWhite: "#F4F5EF",
+  muted: "#C0D0C0",
+  danger: "#F06454"
+};
+
+// Calcula la energía total de las baldosas operativas.
 const getValidEnergy = (tilesData) => {
   return tilesData
     .filter(t => t.estado === "ok")
@@ -25,27 +39,33 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState("Mapa");
 
+  // Datos iniciales de las baldosas.
   const [tiles, setTiles] = useState([
     { id: 1, energia: 0, estado: "ok", pasos: 0, energia_total: 0 },
     { id: 2, energia: 0, estado: "ok", pasos: 0, energia_total: 0 },
     { id: 3, energia: 0, estado: "ok", pasos: 0, energia_total: 0 }
   ]);
 
+  // Estados para almacenar el historial energético.
   const [history, setHistory] = useState([]);
   const [fullHistory, setFullHistory] = useState([]);
   const [dailyEnergy, setDailyEnergy] = useState(0);
 
+  // Energía actual de todas las baldosas operativas.
   const totalEnergy = getValidEnergy(tiles);
 
+  // Suma los pasos registrados en todas las baldosas.
   const totalSteps = tiles.reduce(
     (sum, t) => sum + t.pasos,
     0
   );
 
+  // Cuenta las baldosas que funcionan correctamente.
   const activeTiles = tiles.filter(
     t => t.estado === "ok"
   ).length;
 
+  // Consulta los datos del ESP32 cada 2 segundos.
   useEffect(() => {
 
     const interval = setInterval(() => {
@@ -70,6 +90,7 @@ export default function App() {
 
   }, []);
 
+  // Registra la energía total y la hora de cada medición.
   const updateHistory = (tilesData) => {
 
     const total = getValidEnergy(tilesData);
@@ -86,17 +107,20 @@ export default function App() {
       energy: total
     };
 
+    // Conserva las últimas 10 mediciones para el gráfico.
     setHistory(prev => [
       ...prev.slice(-9),
       newEntry
     ]);
 
+    // Conserva todas las mediciones de la sesión.
     setFullHistory(prev => [
       ...prev,
       newEntry
     ]);
   };
 
+  // Busca el momento en que se registró mayor energía.
   const getPeakHour = () => {
 
     if (fullHistory.length === 0)
@@ -116,6 +140,7 @@ export default function App() {
 
   const peak = getPeakHour();
 
+  // Identifica la baldosa con mayor cantidad de pasos.
   const mostUsed = tiles.reduce(
     (max, t) =>
       t.pasos > max.pasos
@@ -123,6 +148,10 @@ export default function App() {
         : max,
     tiles[0]
   );
+
+  // --------------------------------------------------
+  // MAPA HEXAGONAL
+  // --------------------------------------------------
 
   const renderHexMap = () => {
 
@@ -145,6 +174,7 @@ export default function App() {
 
               const size = 32;
 
+              // Posiciones de los hexágonos.
               const positions = [
                 [0, 0],
                 [1, 0],
@@ -170,6 +200,7 @@ export default function App() {
               const sectionRow =
                 Math.floor(sectionIndex / 2);
 
+              // Calcula la posición de cada baldosa.
               const cx =
                 150 +
                 sectionCol * 260 +
@@ -181,13 +212,15 @@ export default function App() {
                 sectionRow * 220 +
                 size * 1.5 * r;
 
+              // Calcula la intensidad de generación.
               const intensity =
                 Math.min(tile.energia * 2, 1);
 
+              // Asigna colores según generación y estado.
               const color =
                 tile.estado === "error"
-                  ? "#ff3b30"
-                  : `rgba(0,255,170,${0.15 + intensity})`;
+                  ? COLORS.danger
+                  : `rgba(111,190,53,${0.20 + intensity * 0.75})`;
 
               return (
                 <React.Fragment key={tile.id}>
@@ -226,7 +259,7 @@ export default function App() {
                           ${x3},${y3}
                         `}
                         fill={color}
-                        stroke="#1d3a36"
+                        stroke={COLORS.sage}
                         strokeWidth="1"
                       />
                     );
@@ -235,7 +268,7 @@ export default function App() {
                   <Text
                     style={{
                       position: "absolute",
-                      color: "#fff",
+                      color: COLORS.offWhite,
                       left: cx - 5,
                       top: cy - 8,
                       fontWeight: "bold"
@@ -252,6 +285,10 @@ export default function App() {
       </View>
     );
   };
+
+  // --------------------------------------------------
+  // PANEL DE HEXÁGONOS
+  // --------------------------------------------------
 
   const renderPanel = () => {
 
@@ -283,8 +320,8 @@ export default function App() {
                     {
                       backgroundColor:
                         tile.estado === "error"
-                          ? "rgba(255,0,0,0.2)"
-                          : `rgba(0,255,170,${0.08 + intensity})`
+                          ? "rgba(240,100,84,0.20)"
+                          : `rgba(111,190,53,${0.12 + intensity * 0.70})`
                     }
                   ]}
                 />
@@ -307,8 +344,8 @@ export default function App() {
                     {
                       backgroundColor:
                         tile.estado === "ok"
-                          ? "rgba(0,255,170,0.15)"
-                          : "rgba(255,0,0,0.2)"
+                          ? "rgba(111,190,53,0.18)"
+                          : "rgba(240,100,84,0.20)"
                     }
                   ]}
                 >
@@ -316,8 +353,8 @@ export default function App() {
                     style={{
                       color:
                         tile.estado === "ok"
-                          ? "#00ffaa"
-                          : "#ff4d4d",
+                          ? COLORS.lime
+                          : COLORS.danger,
                       fontWeight: "600",
                       fontSize: 12
                     }}
@@ -333,6 +370,10 @@ export default function App() {
       </View>
     );
   };
+
+  // --------------------------------------------------
+  // LISTA TÉCNICA
+  // --------------------------------------------------
 
   const renderList = () => {
 
@@ -380,8 +421,8 @@ export default function App() {
                     {
                       backgroundColor:
                         item.estado === "ok"
-                          ? "rgba(0,255,170,0.15)"
-                          : "rgba(255,0,0,0.2)"
+                          ? "rgba(111,190,53,0.18)"
+                          : "rgba(240,100,84,0.20)"
                     }
                   ]}
                 >
@@ -389,8 +430,8 @@ export default function App() {
                     style={{
                       color:
                         item.estado === "ok"
-                          ? "#00ffaa"
-                          : "#ff4d4d"
+                          ? COLORS.lime
+                          : COLORS.danger
                     }}
                   >
                     {item.estado === "ok"
@@ -412,16 +453,22 @@ export default function App() {
     );
   };
 
+  // --------------------------------------------------
+  // INTERFAZ PRINCIPAL
+  // --------------------------------------------------
+
   return (
 
     <ScrollView style={styles.container}>
+
+      {/* Encabezado y logotipo */}
 
       <View style={styles.header}>
 
         <View>
 
           <Text style={styles.logo}>
-            Voltwalk
+            <Text style={styles.logoYellow}>VOLT</Text><Text style={styles.logoGreen}>WALK</Text>
           </Text>
 
           <Text style={styles.date}>
@@ -435,6 +482,8 @@ export default function App() {
         </Text>
 
       </View>
+
+      {/* Pestañas de navegación */}
 
       <View style={styles.tabs}>
 
@@ -463,6 +512,8 @@ export default function App() {
           </TouchableOpacity>
         ))}
       </View>
+
+      {/* Estadísticas generales */}
 
       <View style={styles.statsGrid}>
 
@@ -513,6 +564,8 @@ export default function App() {
 
       </View>
 
+      {/* Información de la baldosa más transitada */}
+
       <View style={styles.largeCard}>
 
         <View>
@@ -544,9 +597,13 @@ export default function App() {
 
       </View>
 
+      {/* Muestra la sección seleccionada */}
+
       {activeTab === "Mapa" && renderHexMap()}
       {activeTab === "Panel" && renderPanel()}
       {activeTab === "Lista" && renderList()}
+
+      {/* Historial energético */}
 
       <View style={styles.section}>
 
@@ -581,15 +638,15 @@ export default function App() {
           withOuterLines={false}
 
           chartConfig={{
-            backgroundGradientFrom: "#0b0b12",
-            backgroundGradientTo: "#0b0b12",
+            backgroundGradientFrom: COLORS.forestDeep,
+            backgroundGradientTo: COLORS.forestDeep,
 
             decimalPlaces: 2,
 
             color: (opacity = 1) =>
-              `rgba(0,255,170,${opacity})`,
+              `rgba(255,213,0,${opacity})`,
 
-            labelColor: () => "#777"
+            labelColor: () => COLORS.muted
           }}
 
           bezier
@@ -605,15 +662,21 @@ export default function App() {
   );
 }
 
+// --------------------------------------------------
+// ESTILOS DE LA APLICACIÓN
+// --------------------------------------------------
+
 const styles = StyleSheet.create({
 
+  // Fondo general.
   container: {
     flex: 1,
-    backgroundColor: "#05060a",
+    backgroundColor: COLORS.forest,
     paddingHorizontal: 20,
     paddingTop: 60
   },
 
+  // Encabezado.
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -621,25 +684,36 @@ const styles = StyleSheet.create({
     marginBottom: 25
   },
 
+  // Logotipo.
   logo: {
-    color: "#fff",
     fontSize: 30,
     fontWeight: "bold"
   },
 
+  logoYellow: {
+    color: COLORS.yellow
+  },
+
+  logoGreen: {
+    color: COLORS.lime
+  },
+
+  // Fecha.
   date: {
-    color: "#777",
+    color: COLORS.muted,
     marginTop: 4
   },
 
+  // Indicador de baldosas activas.
   activeText: {
-    color: "#00ffaa",
+    color: COLORS.lime,
     fontWeight: "600"
   },
 
+  // Barra de navegación.
   tabs: {
     flexDirection: "row",
-    backgroundColor: "#11131a",
+    backgroundColor: COLORS.forestDeep,
     borderRadius: 18,
     padding: 6,
     marginBottom: 25,
@@ -652,20 +726,22 @@ const styles = StyleSheet.create({
     borderRadius: 12
   },
 
+  // Pestaña seleccionada.
   activeTab: {
-    backgroundColor: "#2a2d36"
+    backgroundColor: COLORS.lime
   },
 
   tabText: {
-    color: "#777",
+    color: COLORS.muted,
     fontSize: 16
   },
 
   activeTabText: {
-    color: "#fff",
+    color: COLORS.forestDeep,
     fontWeight: "bold"
   },
 
+  // Cuadrícula de estadísticas.
   statsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -673,72 +749,77 @@ const styles = StyleSheet.create({
     gap: 12
   },
 
+  // Tarjetas de información.
   card: {
     width: "48%",
-    backgroundColor: "#0d0f16",
+    backgroundColor: COLORS.forestLight,
     borderRadius: 22,
     padding: 20,
     borderWidth: 1,
-    borderColor: "#1b1f2a",
+    borderColor: COLORS.sage,
     marginBottom: 14
   },
 
+  // Tarjeta destacada.
   greenCard: {
-    backgroundColor: "#03251f",
-    borderColor: "#005f4d"
+    backgroundColor: COLORS.forestDeep,
+    borderColor: COLORS.lime
   },
 
   cardLabel: {
-    color: "#777",
+    color: COLORS.sage,
     fontSize: 12,
     letterSpacing: 2,
     marginBottom: 10
   },
 
   cardValue: {
-    color: "#fff",
+    color: COLORS.offWhite,
     fontSize: 34,
     fontWeight: "bold"
   },
 
   greenValue: {
-    color: "#00ffaa",
+    color: COLORS.yellow,
     fontSize: 34,
     fontWeight: "bold"
   },
 
+  // Tarjeta de información ampliada.
   largeCard: {
-    backgroundColor: "#0d0f16",
+    backgroundColor: COLORS.forestLight,
     borderRadius: 22,
     padding: 22,
     borderWidth: 1,
-    borderColor: "#1b1f2a",
+    borderColor: COLORS.sage,
     marginBottom: 25,
     flexDirection: "row",
     justifyContent: "space-between"
   },
 
   largeValue: {
-    color: "#fff",
+    color: COLORS.offWhite,
     fontSize: 24,
     fontWeight: "bold"
   },
 
+  // Secciones principales.
   section: {
-    backgroundColor: "#0b0d14",
+    backgroundColor: COLORS.forestLight,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: "#1b1f2a",
+    borderColor: COLORS.sage,
     padding: 20,
     marginBottom: 25
   },
 
   sectionTitle: {
-    color: "#777",
+    color: COLORS.sage,
     letterSpacing: 2,
     marginBottom: 15
   },
 
+  // Panel de baldosas.
   cardsContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -747,12 +828,12 @@ const styles = StyleSheet.create({
 
   hexCard: {
     width: 150,
-    backgroundColor: "#10131b",
+    backgroundColor: COLORS.forestDeep,
     borderRadius: 24,
     padding: 18,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#1b1f2a"
+    borderColor: COLORS.sage
   },
 
   hexPreview: {
@@ -763,22 +844,23 @@ const styles = StyleSheet.create({
   },
 
   hexId: {
-    color: "#fff",
+    color: COLORS.offWhite,
     fontSize: 22,
     fontWeight: "bold"
   },
 
   energyText: {
-    color: "#00ffaa",
+    color: COLORS.yellow,
     marginTop: 10,
     fontWeight: "bold"
   },
 
   stepsText: {
-    color: "#666",
+    color: COLORS.muted,
     marginTop: 6
   },
 
+  // Indicadores de estado.
   statusBadge: {
     paddingHorizontal: 14,
     paddingVertical: 6,
@@ -786,8 +868,9 @@ const styles = StyleSheet.create({
     marginTop: 12
   },
 
+  // Elementos de la lista técnica.
   listItem: {
-    backgroundColor: "#10131b",
+    backgroundColor: COLORS.forestDeep,
     borderRadius: 20,
     padding: 18,
     marginBottom: 14,
@@ -805,18 +888,18 @@ const styles = StyleSheet.create({
     width: 55,
     height: 55,
     borderRadius: 16,
-    backgroundColor: "rgba(0,255,170,0.08)",
+    backgroundColor: "rgba(111,190,53,0.18)",
     marginRight: 16
   },
 
   listTitle: {
-    color: "#fff",
+    color: COLORS.offWhite,
     fontSize: 20,
     fontWeight: "bold"
   },
 
   listSub: {
-    color: "#666",
+    color: COLORS.muted,
     marginTop: 4
   },
 
@@ -825,7 +908,7 @@ const styles = StyleSheet.create({
   },
 
   energyLabel: {
-    color: "#00ffaa",
+    color: COLORS.yellow,
     marginTop: 10,
     fontWeight: "bold",
     fontSize: 18
