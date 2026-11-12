@@ -1,0 +1,834 @@
+import React, { useEffect, useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  FlatList,
+  Dimensions
+} from "react-native";
+
+import Svg, { Polygon } from "react-native-svg";
+import { LineChart } from "react-native-chart-kit";
+
+const screenWidth = Dimensions.get("window").width;
+const API = "http://192.168.4.1";
+
+const getValidEnergy = (tilesData) => {
+  return tilesData
+    .filter(t => t.estado === "ok")
+    .reduce((sum, t) => sum + t.energia, 0);
+};
+
+export default function App() {
+
+  const [activeTab, setActiveTab] = useState("Mapa");
+
+  const [tiles, setTiles] = useState([
+    { id: 1, energia: 0, estado: "ok", pasos: 0, energia_total: 0 },
+    { id: 2, energia: 0, estado: "ok", pasos: 0, energia_total: 0 },
+    { id: 3, energia: 0, estado: "ok", pasos: 0, energia_total: 0 }
+  ]);
+
+  const [history, setHistory] = useState([]);
+  const [fullHistory, setFullHistory] = useState([]);
+  const [dailyEnergy, setDailyEnergy] = useState(0);
+
+  const totalEnergy = getValidEnergy(tiles);
+
+  const totalSteps = tiles.reduce(
+    (sum, t) => sum + t.pasos,
+    0
+  );
+
+  const activeTiles = tiles.filter(
+    t => t.estado === "ok"
+  ).length;
+
+  useEffect(() => {
+
+    const interval = setInterval(() => {
+
+      fetch(`${API}/tiles`)
+        .then(res => res.json())
+        .then(data => {
+
+          setTiles(data);
+
+          updateHistory(data);
+
+          setDailyEnergy(
+            getValidEnergy(data)
+          );
+        })
+        .catch(err => console.error(err));
+
+    }, 2000);
+
+    return () => clearInterval(interval);
+
+  }, []);
+
+  const updateHistory = (tilesData) => {
+
+    const total = getValidEnergy(tilesData);
+
+    const now = new Date();
+
+    const time =
+      now.getHours() +
+      ":" +
+      now.getMinutes().toString().padStart(2, "0");
+
+    const newEntry = {
+      time,
+      energy: total
+    };
+
+    setHistory(prev => [
+      ...prev.slice(-9),
+      newEntry
+    ]);
+
+    setFullHistory(prev => [
+      ...prev,
+      newEntry
+    ]);
+  };
+
+  const getPeakHour = () => {
+
+    if (fullHistory.length === 0)
+      return null;
+
+    let max = fullHistory[0];
+
+    fullHistory.forEach(h => {
+
+      if (h.energy > max.energy) {
+        max = h;
+      }
+    });
+
+    return max;
+  };
+
+  const peak = getPeakHour();
+
+  const mostUsed = tiles.reduce(
+    (max, t) =>
+      t.pasos > max.pasos
+        ? t
+        : max,
+    tiles[0]
+  );
+
+  const renderHexMap = () => {
+
+    return (
+
+      <View style={styles.section}>
+
+        <Text style={styles.sectionTitle}>
+          MAPA HEXAGONAL
+        </Text>
+
+        <View style={{
+          alignItems: "center",
+          marginTop: 20
+        }}>
+
+          <Svg height={450} width={500}>
+
+            {tiles.map((tile, i) => {
+
+              const size = 32;
+
+              const positions = [
+                [0, 0],
+                [1, 0],
+                [0, 1],
+                [-1, 1],
+                [-1, 0],
+                [0, -1],
+                [1, -1]
+              ];
+
+              const sectionIndex =
+                Math.floor(i / 7);
+
+              const indexInSection =
+                i % 7;
+
+              const [q, r] =
+                positions[indexInSection] || [0, 0];
+
+              const sectionCol =
+                sectionIndex % 2;
+
+              const sectionRow =
+                Math.floor(sectionIndex / 2);
+
+              const cx =
+                150 +
+                sectionCol * 260 +
+                size * Math.sqrt(3) * q +
+                (size * Math.sqrt(3) / 2) * r;
+
+              const cy =
+                180 +
+                sectionRow * 220 +
+                size * 1.5 * r;
+
+              const intensity =
+                Math.min(tile.energia * 2, 1);
+
+              const color =
+                tile.estado === "error"
+                  ? "#ff3b30"
+                  : `rgba(0,255,170,${0.15 + intensity})`;
+
+              return (
+                <React.Fragment key={tile.id}>
+
+                  {[0,1,2,3,4,5].map(t => {
+
+                    const angle =
+                      (Math.PI / 3) * t
+                      - Math.PI / 2;
+
+                    const x1 = cx;
+                    const y1 = cy;
+
+                    const x2 =
+                      cx + size * Math.cos(angle);
+
+                    const y2 =
+                      cy + size * Math.sin(angle);
+
+                    const x3 =
+                      cx +
+                      size *
+                      Math.cos(angle + Math.PI / 3);
+
+                    const y3 =
+                      cy +
+                      size *
+                      Math.sin(angle + Math.PI / 3);
+
+                    return (
+                      <Polygon
+                        key={`${tile.id}-${t}`}
+                        points={`
+                          ${x1},${y1}
+                          ${x2},${y2}
+                          ${x3},${y3}
+                        `}
+                        fill={color}
+                        stroke="#1d3a36"
+                        strokeWidth="1"
+                      />
+                    );
+                  })}
+
+                  <Text
+                    style={{
+                      position: "absolute",
+                      color: "#fff",
+                      left: cx - 5,
+                      top: cy - 8,
+                      fontWeight: "bold"
+                    }}
+                  >
+                    {tile.id}
+                  </Text>
+
+                </React.Fragment>
+              );
+            })}
+          </Svg>
+        </View>
+      </View>
+    );
+  };
+
+  const renderPanel = () => {
+
+    return (
+
+      <View style={styles.section}>
+
+        <Text style={styles.sectionTitle}>
+          PANEL DE HEXÁGONOS
+        </Text>
+
+        <View style={styles.cardsContainer}>
+
+          {tiles.map(tile => {
+
+            const intensity =
+              Math.min(tile.energia * 2, 1);
+
+            return (
+
+              <View
+                key={tile.id}
+                style={styles.hexCard}
+              >
+
+                <View
+                  style={[
+                    styles.hexPreview,
+                    {
+                      backgroundColor:
+                        tile.estado === "error"
+                          ? "rgba(255,0,0,0.2)"
+                          : `rgba(0,255,170,${0.08 + intensity})`
+                    }
+                  ]}
+                />
+
+                <Text style={styles.hexId}>
+                  #{tile.id}
+                </Text>
+
+                <Text style={styles.energyText}>
+                  {tile.energia.toFixed(2)} J
+                </Text>
+
+                <Text style={styles.stepsText}>
+                  {tile.pasos} pasos
+                </Text>
+
+                <View
+                  style={[
+                    styles.statusBadge,
+                    {
+                      backgroundColor:
+                        tile.estado === "ok"
+                          ? "rgba(0,255,170,0.15)"
+                          : "rgba(255,0,0,0.2)"
+                    }
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color:
+                        tile.estado === "ok"
+                          ? "#00ffaa"
+                          : "#ff4d4d",
+                      fontWeight: "600",
+                      fontSize: 12
+                    }}
+                  >
+                    {tile.estado}
+                  </Text>
+                </View>
+
+              </View>
+            );
+          })}
+        </View>
+      </View>
+    );
+  };
+
+  const renderList = () => {
+
+    return (
+
+      <View style={styles.section}>
+
+        <Text style={styles.sectionTitle}>
+          LISTA TÉCNICA
+        </Text>
+
+        <FlatList
+          data={tiles}
+          scrollEnabled={false}
+          keyExtractor={(item) =>
+            item.id.toString()
+          }
+          renderItem={({ item }) => (
+
+            <View style={styles.listItem}>
+
+              <View style={styles.listLeft}>
+
+                <View style={styles.listHex}/>
+
+                <View>
+
+                  <Text style={styles.listTitle}>
+                    Hexágono #{item.id}
+                  </Text>
+
+                  <Text style={styles.listSub}>
+                    {item.pasos} pasos · acumulado {" "}
+                    {item.energia_total.toFixed(3)} J
+                  </Text>
+
+                </View>
+              </View>
+
+              <View style={styles.listRight}>
+
+                <View
+                  style={[
+                    styles.statusBadge,
+                    {
+                      backgroundColor:
+                        item.estado === "ok"
+                          ? "rgba(0,255,170,0.15)"
+                          : "rgba(255,0,0,0.2)"
+                    }
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color:
+                        item.estado === "ok"
+                          ? "#00ffaa"
+                          : "#ff4d4d"
+                    }}
+                  >
+                    {item.estado === "ok"
+                      ? "operativo"
+                      : "error"}
+                  </Text>
+                </View>
+
+                <Text style={styles.energyLabel}>
+                  {item.energia.toFixed(2)} J
+                </Text>
+
+              </View>
+
+            </View>
+          )}
+        />
+      </View>
+    );
+  };
+
+  return (
+
+    <ScrollView style={styles.container}>
+
+      <View style={styles.header}>
+
+        <View>
+
+          <Text style={styles.logo}>
+            Voltwalk
+          </Text>
+
+          <Text style={styles.date}>
+            {new Date().toISOString().split("T")[0]}
+          </Text>
+
+        </View>
+
+        <Text style={styles.activeText}>
+          ● {activeTiles} activos
+        </Text>
+
+      </View>
+
+      <View style={styles.tabs}>
+
+        {["Mapa", "Panel", "Lista"].map(tab => (
+
+          <TouchableOpacity
+            key={tab}
+            style={[
+              styles.tab,
+              activeTab === tab &&
+              styles.activeTab
+            ]}
+            onPress={() => setActiveTab(tab)}
+          >
+
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === tab &&
+                styles.activeTabText
+              ]}
+            >
+              {tab}
+            </Text>
+
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <View style={styles.statsGrid}>
+
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>
+            PASOS TOTALES
+          </Text>
+
+          <Text style={styles.cardValue}>
+            {totalSteps}
+          </Text>
+        </View>
+
+        <View style={[
+          styles.card,
+          styles.greenCard
+        ]}>
+          <Text style={styles.cardLabel}>
+            ENERGÍA DEL DÍA
+          </Text>
+
+          <Text style={styles.greenValue}>
+            {dailyEnergy.toFixed(2)} J
+          </Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>
+            ENERGÍA ACTUAL
+          </Text>
+
+          <Text style={styles.cardValue}>
+            {totalEnergy.toFixed(2)} J
+          </Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>
+            HORA PICO
+          </Text>
+
+          <Text style={styles.cardValue}>
+            {peak
+              ? peak.time
+              : "—"}
+          </Text>
+        </View>
+
+      </View>
+
+      <View style={styles.largeCard}>
+
+        <View>
+
+          <Text style={styles.cardLabel}>
+            HEXÁGONO MÁS TRANSITADO
+          </Text>
+
+          <Text style={styles.largeValue}>
+            #{mostUsed.id} {mostUsed.pasos} pasos
+          </Text>
+
+        </View>
+
+        <View>
+
+          <Text style={styles.cardLabel}>
+            ENERGÍA ACUMULADA
+          </Text>
+
+          <Text style={styles.greenValue}>
+            {tiles
+              .reduce((sum, t) =>
+                sum + t.energia_total, 0)
+              .toFixed(3)} J
+          </Text>
+
+        </View>
+
+      </View>
+
+      {activeTab === "Mapa" && renderHexMap()}
+      {activeTab === "Panel" && renderPanel()}
+      {activeTab === "Lista" && renderList()}
+
+      <View style={styles.section}>
+
+        <Text style={styles.sectionTitle}>
+          HISTORIAL ENERGÉTICO
+        </Text>
+
+        <LineChart
+          data={{
+            labels:
+              history.length
+                ? history.map(h => h.time)
+                : ["00:00"],
+
+            datasets: [
+              {
+                data:
+                  history.length
+                    ? history.map(h => h.energy)
+                    : [0]
+              }
+            ]
+          }}
+
+          width={screenWidth - 40}
+          height={220}
+
+          withDots={false}
+
+          withInnerLines={false}
+
+          withOuterLines={false}
+
+          chartConfig={{
+            backgroundGradientFrom: "#0b0b12",
+            backgroundGradientTo: "#0b0b12",
+
+            decimalPlaces: 2,
+
+            color: (opacity = 1) =>
+              `rgba(0,255,170,${opacity})`,
+
+            labelColor: () => "#777"
+          }}
+
+          bezier
+
+          style={{
+            borderRadius: 20,
+            marginTop: 10
+          }}
+        />
+      </View>
+
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+
+  container: {
+    flex: 1,
+    backgroundColor: "#05060a",
+    paddingHorizontal: 20,
+    paddingTop: 60
+  },
+
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 25
+  },
+
+  logo: {
+    color: "#fff",
+    fontSize: 30,
+    fontWeight: "bold"
+  },
+
+  date: {
+    color: "#777",
+    marginTop: 4
+  },
+
+  activeText: {
+    color: "#00ffaa",
+    fontWeight: "600"
+  },
+
+  tabs: {
+    flexDirection: "row",
+    backgroundColor: "#11131a",
+    borderRadius: 18,
+    padding: 6,
+    marginBottom: 25,
+    alignSelf: "center"
+  },
+
+  tab: {
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderRadius: 12
+  },
+
+  activeTab: {
+    backgroundColor: "#2a2d36"
+  },
+
+  tabText: {
+    color: "#777",
+    fontSize: 16
+  },
+
+  activeTabText: {
+    color: "#fff",
+    fontWeight: "bold"
+  },
+
+  statsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    gap: 12
+  },
+
+  card: {
+    width: "48%",
+    backgroundColor: "#0d0f16",
+    borderRadius: 22,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "#1b1f2a",
+    marginBottom: 14
+  },
+
+  greenCard: {
+    backgroundColor: "#03251f",
+    borderColor: "#005f4d"
+  },
+
+  cardLabel: {
+    color: "#777",
+    fontSize: 12,
+    letterSpacing: 2,
+    marginBottom: 10
+  },
+
+  cardValue: {
+    color: "#fff",
+    fontSize: 34,
+    fontWeight: "bold"
+  },
+
+  greenValue: {
+    color: "#00ffaa",
+    fontSize: 34,
+    fontWeight: "bold"
+  },
+
+  largeCard: {
+    backgroundColor: "#0d0f16",
+    borderRadius: 22,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: "#1b1f2a",
+    marginBottom: 25,
+    flexDirection: "row",
+    justifyContent: "space-between"
+  },
+
+  largeValue: {
+    color: "#fff",
+    fontSize: 24,
+    fontWeight: "bold"
+  },
+
+  section: {
+    backgroundColor: "#0b0d14",
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "#1b1f2a",
+    padding: 20,
+    marginBottom: 25
+  },
+
+  sectionTitle: {
+    color: "#777",
+    letterSpacing: 2,
+    marginBottom: 15
+  },
+
+  cardsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 15
+  },
+
+  hexCard: {
+    width: 150,
+    backgroundColor: "#10131b",
+    borderRadius: 24,
+    padding: 18,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#1b1f2a"
+  },
+
+  hexPreview: {
+    width: 70,
+    height: 70,
+    borderRadius: 20,
+    marginBottom: 14
+  },
+
+  hexId: {
+    color: "#fff",
+    fontSize: 22,
+    fontWeight: "bold"
+  },
+
+  energyText: {
+    color: "#00ffaa",
+    marginTop: 10,
+    fontWeight: "bold"
+  },
+
+  stepsText: {
+    color: "#666",
+    marginTop: 6
+  },
+
+  statusBadge: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    marginTop: 12
+  },
+
+  listItem: {
+    backgroundColor: "#10131b",
+    borderRadius: 20,
+    padding: 18,
+    marginBottom: 14,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center"
+  },
+
+  listLeft: {
+    flexDirection: "row",
+    alignItems: "center"
+  },
+
+  listHex: {
+    width: 55,
+    height: 55,
+    borderRadius: 16,
+    backgroundColor: "rgba(0,255,170,0.08)",
+    marginRight: 16
+  },
+
+  listTitle: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "bold"
+  },
+
+  listSub: {
+    color: "#666",
+    marginTop: 4
+  },
+
+  listRight: {
+    alignItems: "flex-end"
+  },
+
+  energyLabel: {
+    color: "#00ffaa",
+    marginTop: 10,
+    fontWeight: "bold",
+    fontSize: 18
+  }
+
+});
